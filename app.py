@@ -24,7 +24,6 @@ ORO = "#C6A15B"
 PAPEL = "#F7F5F0"
 GRIS = "#5B6B7A"
 
-# Diccionario de tipos acortados
 TIPOS_CORTOS = {
     "Servicio de Atención Primaria de Urgencia (SAPU)": "SAPU",
     "Servicio de Atención Primaria de Urgencia de Alta Resolutividad (SAR)": "SAR",
@@ -70,82 +69,85 @@ st.set_page_config(
 )
 
 # --------------------------------------------------------------------------
-# CSS Extremo para forzar legibilidad y botones gigantes
+# CSS Corregido (Sin romper iconos y con botones gigantes)
 # --------------------------------------------------------------------------
 st.markdown(
     f"""
     <style>
-      /* Fondo claro forzado */
+      /* Fondo claro */
       .stApp {{ background-color: {PAPEL} !important; }}
       
-      /* Textos base grandes y oscuros */
-      h1, h2, h3, p, span, div, label {{ 
-          font-family: system-ui, -apple-system, sans-serif !important; 
-          color: {TINTA} !important; 
-      }}
+      /* Textos base: SOLO afectamos los párrafos y títulos, no los divs ni spans para no romper iconos */
+      h1, h2, h3 {{ font-family: system-ui, -apple-system, sans-serif !important; color: {TINTA} !important; font-weight: 800; }}
+      p, label {{ font-family: system-ui, -apple-system, sans-serif !important; color: {TINTA} !important; }}
       
       /* Cabecera */
-      .cabecera {{ text-align: center; margin-bottom: 2rem; }}
-      .cabecera h1 {{ font-size: 2.2rem; line-height: 1.1; color: {AZUL} !important; font-weight: 800; }}
-      .cabecera p {{ font-size: 1rem; color: {GRIS} !important; text-transform: uppercase; letter-spacing: 1px; }}
+      .cabecera {{ text-align: center; margin-bottom: 1.5rem; }}
+      .cabecera h1 {{ font-size: 2.2rem; line-height: 1.1; color: {AZUL} !important; }}
 
-      /* Tarjeta del resultado principal */
+      /* Botón Falso de GPS (Gigante) */
+      .gps-fake {{ 
+          background-color: #E3F2FD; 
+          border: 3px dashed {AZUL}; 
+          border-radius: 16px; 
+          padding: 1.5rem; 
+          text-align: center; 
+          height: 110px; 
+          display: flex; 
+          align-items: center; 
+          justify-content: center;
+          margin-bottom: 1rem;
+      }}
+      .gps-fake p {{ font-size: 1.3rem; font-weight: bold; color: {AZUL} !important; margin: 0; }}
+
+      /* Truco: Hacemos el componente real invisible y lo estiramos sobre el botón falso */
+      div[data-testid="stCustomComponentV1"] {{
+          margin-top: -110px !important; /* Lo subimos exactamente donde está el botón falso */
+          height: 110px !important;
+          opacity: 0 !important; /* Invisible */
+          z-index: 999 !important;
+          cursor: pointer;
+      }}
+
+      /* Tarjeta principal */
       .tarjeta-principal {{ 
           background: #FFFFFF; 
           border: 3px solid {ORO}; 
           border-radius: 16px; 
           padding: 1.5rem; 
           margin-bottom: 1.5rem; 
-          box-shadow: 0 8px 20px rgba(0,0,0,0.15); 
           text-align: center;
       }}
       .tarjeta-principal h2 {{ font-size: 1.8rem; margin: 0 0 0.5rem 0; color: {AZUL} !important; line-height: 1.2; }}
       .tarjeta-principal .dir {{ font-size: 1.2rem; color: {TINTA} !important; margin-bottom: 1rem; }}
-      .tarjeta-principal .distancia {{ font-size: 1.4rem; font-weight: bold; color: {ORO} !important; margin-bottom: 1rem; }}
+      .tarjeta-principal .distancia {{ font-size: 1.4rem; font-weight: bold; color: {ORO} !important; margin-bottom: 0; }}
       
-      /* Botones HTML Gigantes (Llamar y Ruta) */
+      /* Botones de acción HTML */
       .btn-accion {{
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 100%;
-          padding: 1.2rem;
-          margin-bottom: 1rem;
-          border-radius: 12px;
-          font-size: 1.5rem;
-          font-weight: bold;
-          text-decoration: none !important;
-          color: #FFFFFF !important;
-          background-color: {AZUL};
+          display: flex; align-items: center; justify-content: center;
+          width: 100%; padding: 1.2rem; margin-bottom: 1rem;
+          border-radius: 12px; font-size: 1.5rem; font-weight: bold;
+          text-decoration: none !important; color: #FFFFFF !important;
           box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-          transition: transform 0.1s;
       }}
-      .btn-accion:active {{ transform: scale(0.95); }}
-      .btn-llamar {{ background-color: #2E7D32 !important; }} /* Verde para llamar */
-      .btn-ruta {{ background-color: {AZUL} !important; }} /* Azul para ruta */
+      .btn-llamar {{ background-color: #2E7D32 !important; }}
+      .btn-ruta {{ background-color: {AZUL} !important; }}
 
-      /* Tarjetas secundarias */
-      .tarjeta-sec {{ 
-          background: #FFFFFF; 
-          border: 1px solid #D1D5DB; 
-          border-radius: 12px; 
-          padding: 1rem; 
-          margin-bottom: 1rem; 
+      /* Estilo del desplegable para que no se rompa */
+      [data-testid="stExpander"] summary {{
+          font-size: 1.1rem !important;
+          color: {AZUL} !important;
+          font-weight: bold !important;
       }}
-      .tarjeta-sec h4 {{ font-size: 1.2rem; margin: 0 0 0.3rem 0; color: {TINTA} !important; }}
-      .tarjeta-sec p {{ font-size: 1rem; margin: 0; color: {GRIS} !important; }}
       
-      /* Ocultar menús de Streamlit que estorban */
-      #MainMenu {{visibility: hidden;}}
-      footer {{visibility: hidden;}}
-      header {{visibility: hidden;}}
+      #MainMenu, footer, header {{visibility: hidden;}}
     </style>
     """,
     unsafe_allow_html=True,
 )
 
 # --------------------------------------------------------------------------
-# Lógica de Datos (Sin cambios mayores)
+# Lógica de Datos
 # --------------------------------------------------------------------------
 @st.cache_data(ttl=60 * 60 * 12, show_spinner=False)
 def cargar_catastro() -> tuple[pd.DataFrame, str]:
@@ -233,37 +235,34 @@ st.markdown(
 try:
     with st.spinner("Buscando centros de salud..."):
         df, sello = cargar_catastro()
-except Exception as error:
-    st.error(f"Error de conexión. Revisa tu internet.")
+except Exception:
+    st.error("Error de conexión. Revisa tu internet.")
     st.stop()
 
 ahora = ahora_en_chile()
 df["abierto"] = [esta_abierto(u, ahora) for u in df["urgencia"]]
 
-# --- GEOLOCALIZACIÓN GIGANTE ---
-st.markdown("<h3 style='text-align:center;'>1. Toca tu ubicación</h3>", unsafe_allow_html=True)
-
+# --- GEOLOCALIZACIÓN (Botón Gigante) ---
 origen = None
 if GEO_DISPONIBLE:
-    # Envolvemos el botón del mapa en un contenedor gigante para que sea fácil de tocar
+    # 1. Dibujamos el botón falso gigante
     st.markdown(
-        """
-        <div style="background-color: #E3F2FD; border: 2px dashed #1B3A5C; border-radius: 16px; padding: 1.5rem; text-align: center; margin-bottom: 1rem;">
-            <p style="font-size: 1.2rem; margin-bottom: 1rem; font-weight: bold; color: #1B3A5C !important;">Toca el ícono azul de abajo para usar tu GPS</p>
-        </div>
-        """, 
+        '<div class="gps-fake"><p>Toca aquí para activar tu localización</p></div>', 
         unsafe_allow_html=True
     )
     
+    # 2. Colocamos el componente real. El CSS lo hará invisible y lo estirará sobre el botón falso.
     dato = streamlit_geolocation()
+    
     if dato and dato.get("latitude") is not None:
         origen = (float(dato["latitude"]), float(dato["longitude"]), "Tu ubicación GPS")
-        st.success("¡Listo! Ubicación encontrada.")
+        st.success("¡Ubicación activada!")
 else:
-    st.info("Usa el buscador de comunas de abajo.")
+    st.warning("El GPS no está disponible en este navegador.")
 
+# --- BUSCADOR POR COMUNA (Alternativa) ---
 if origen is None:
-    st.markdown("<p style='text-align:center; font-size: 1.2rem;'>O escribe tu comuna:</p>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align:center; font-size: 1.2rem; margin-top: 1rem;'>O busca por comuna:</p>", unsafe_allow_html=True)
     comunas = sorted(df["comuna"].unique())
     comuna_sel = st.selectbox("Comuna", comunas, index=comunas.index("Santiago") if "Santiago" in comunas else 0, label_visibility="collapsed")
     
@@ -275,19 +274,17 @@ if origen is None:
 if origen is not None:
     lat0, lon0, _ = origen
     
-    # Buscamos primero urgencias (lo que un anciano o niño necesita si está asustado)
+    # Buscamos urgencias abiertas
     candidatos = df[df["abierto"]].copy()
     
     if not candidatos.empty:
         candidatos["km"] = [distancia_km(lat0, lon0, la, lo) for la, lo in zip(candidatos["lat"], candidatos["lon"])]
-        # Filtramos a 50 km por defecto para no perdernos
         candidatos = candidatos[candidatos["km"] <= 50].sort_values("km")
 
     if candidatos.empty:
-        st.error("No encontramos centros abiertos cerca. Llama al SAMU (131).")
+        st.error("No hay centros abiertos a menos de 50 km. Llama al SAMU (131).")
     else:
-        st.markdown("<hr style='margin: 2rem 0; border: 1px solid #E4E1D9;'>", unsafe_allow_html=True)
-        st.markdown("<h3 style='text-align:center;'>2. El más cercano abierto</h3>", unsafe_allow_html=True)
+        st.markdown("<hr style='margin: 1.5rem 0; border: 1px solid #E4E1D9;'>", unsafe_allow_html=True)
         
         # --- TARJETA GIGANTE DEL PRIMER RESULTADO ---
         primero = candidatos.iloc[0]
@@ -302,8 +299,7 @@ if origen is not None:
             unsafe_allow_html=True,
         )
         
-        # --- BOTONES GIGANTES CON HTML (Para forzar colores) ---
-        # Botón Llamar (Verde)
+        # --- BOTONES GIGANTES ---
         if primero["fono"]:
             st.markdown(
                 f'<a href="tel:+56{primero["fono"]}" class="btn-accion btn-llamar">📞 LLAMAR AHORA</a>', 
@@ -315,31 +311,28 @@ if origen is not None:
                 unsafe_allow_html=True
             )
 
-        # Botón Ruta (Azul)
         st.markdown(
             f'<a href="https://www.google.com/maps/dir/?api=1&destination={primero["lat"]},{primero["lon"]}" target="_blank" class="btn-accion btn-ruta">🗺️ CÓMO LLEGAR</a>', 
             unsafe_allow_html=True
         )
 
-        # --- OTRAS OPCIONES OCULTAS ---
+        # --- OTRAS OPCIONES ---
         with st.expander("Ver otros centros cercanos"):
             for _, fila in candidatos.iloc[1:6].iterrows():
                 st.markdown(
                     f"""
-                    <div class="tarjeta-sec">
-                      <h4>{fila['nombre']}</h4>
-                      <p>📍 {fila['comuna']} · A {formato_km(fila['km'])}</p>
+                    <div style="background: #FFFFFF; border: 1px solid #D1D5DB; border-radius: 12px; padding: 1rem; margin-bottom: 0.5rem;">
+                      <h4 style="margin: 0 0 0.3rem 0; font-size: 1.2rem; color: {TINTA} !important;">{fila['nombre']}</h4>
+                      <p style="margin: 0; font-size: 1rem; color: {GRIS} !important;">📍 {fila['comuna']} · A {formato_km(fila['km'])}</p>
                     </div>
                     """,
                     unsafe_allow_html=True
                 )
-                # Botones en fila (usando columnas para que no se vean gigantes)
                 c1, c2 = st.columns(2)
                 with c1:
                     if fila["fono"]:
-                        st.markdown(f'<a href="tel:+56{fila["fono"]}" class="btn-accion btn-llamar" style="font-size: 1rem !important; padding: 0.8rem;">📞 Llamar</a>', unsafe_allow_html=True)
+                        st.markdown(f'<a href="tel:+56{fila["fono"]}" class="btn-accion btn-llamar" style="font-size: 1rem !important; padding: 0.8rem; margin-bottom: 0.5rem;">📞 Llamar</a>', unsafe_allow_html=True)
                 with c2:
-                    st.markdown(f'<a href="https://www.google.com/maps/dir/?api=1&destination={fila["lat"]},{fila["lon"]}" target="_blank" class="btn-accion btn-ruta" style="font-size: 1rem !important; padding: 0.8rem;">🗺️ Ruta</a>', unsafe_allow_html=True)
-                st.write("---")
+                    st.markdown(f'<a href="https://www.google.com/maps/dir/?api=1&destination={fila["lat"]},{fila["lon"]}" target="_blank" class="btn-accion btn-ruta" style="font-size: 1rem !important; padding: 0.8rem; margin-bottom: 0.5rem;">🗺️ Ruta</a>', unsafe_allow_html=True)
 
 st.caption(f"Actualizado: {sello} | Fuente: Datos Abiertos MINSAL")

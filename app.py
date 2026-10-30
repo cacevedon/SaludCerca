@@ -60,7 +60,7 @@ TIPOS_CORTOS = {
     "Centro de Regulación Médica de las Urgencias": "Regulador SAMU",
 }
 
-st.set_page_config(page_title="Centro Médico más cercano", page_icon="📍", layout="centered")
+st.set_page_config(page_title="Servicio Médico de Urgencia más cercano", page_icon="📍", layout="centered")
 
 # --------------------------------------------------------------------------
 # CSS: Botones Gigantes y Textos Legibles

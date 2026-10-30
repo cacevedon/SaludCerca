@@ -1,16 +1,10 @@
 from __future__ import annotations
 import datetime as dt
 import math
-import re
 import pandas as pd
 import requests
 import streamlit as st
-
-try:
-    from streamlit_geolocation import streamlit_geolocation
-    GEO_DISPONIBLE = True
-except Exception:
-    GEO_DISPONIBLE = False
+import streamlit.components.v1 as components
 
 # --------------------------------------------------------------------------
 # Configuración general
@@ -54,13 +48,6 @@ TIPOS_CORTOS = {
     "Centro de Regulación Médica de las Urgencias": "Regulador SAMU",
 }
 
-REGIONES = {
-    1: "Tarapacá", 2: "Antofagasta", 3: "Atacama", 4: "Coquimbo",
-    5: "Valparaíso", 6: "O'Higgins", 7: "Maule", 8: "Biobío",
-    9: "La Araucanía", 10: "Los Lagos", 11: "Aysén", 12: "Magallanes",
-    13: "Metropolitana", 14: "Los Ríos", 15: "Arica y Parinacota", 16: "Ñuble",
-}
-
 st.set_page_config(
     page_title="SaludCerca",
     page_icon="📍",
@@ -69,45 +56,18 @@ st.set_page_config(
 )
 
 # --------------------------------------------------------------------------
-# CSS Corregido (Sin romper iconos y con botones gigantes)
+# CSS Optimizado (Sin romper iconos y con botones gigantes)
 # --------------------------------------------------------------------------
 st.markdown(
     f"""
     <style>
-      /* Fondo claro */
       .stApp {{ background-color: {PAPEL} !important; }}
       
-      /* Textos base: SOLO afectamos los párrafos y títulos, no los divs ni spans para no romper iconos */
-      h1, h2, h3 {{ font-family: system-ui, -apple-system, sans-serif !important; color: {TINTA} !important; font-weight: 800; }}
-      p, label {{ font-family: system-ui, -apple-system, sans-serif !important; color: {TINTA} !important; }}
+      /* Solo aplicamos fuentes a los textos, NO a los divs/span para no romper iconos */
+      h1, h2, h3, p, label {{ font-family: system-ui, -apple-system, sans-serif !important; color: {TINTA} !important; }}
       
-      /* Cabecera */
       .cabecera {{ text-align: center; margin-bottom: 1.5rem; }}
-      .cabecera h1 {{ font-size: 2.2rem; line-height: 1.1; color: {AZUL} !important; }}
-
-      /* Botón Falso de GPS (Gigante) */
-      .gps-fake {{ 
-          background-color: #E3F2FD; 
-          border: 3px dashed {AZUL}; 
-          border-radius: 16px; 
-          padding: 1.5rem; 
-          text-align: center; 
-          height: 110px; 
-          display: flex; 
-          align-items: center; 
-          justify-content: center;
-          margin-bottom: 1rem;
-      }}
-      .gps-fake p {{ font-size: 1.3rem; font-weight: bold; color: {AZUL} !important; margin: 0; }}
-
-      /* Truco: Hacemos el componente real invisible y lo estiramos sobre el botón falso */
-      div[data-testid="stCustomComponentV1"] {{
-          margin-top: -110px !important; /* Lo subimos exactamente donde está el botón falso */
-          height: 110px !important;
-          opacity: 0 !important; /* Invisible */
-          z-index: 999 !important;
-          cursor: pointer;
-      }}
+      .cabecera h1 {{ font-size: 2.2rem; line-height: 1.1; color: {AZUL} !important; font-weight: 800; }}
 
       /* Tarjeta principal */
       .tarjeta-principal {{ 
@@ -122,7 +82,7 @@ st.markdown(
       .tarjeta-principal .dir {{ font-size: 1.2rem; color: {TINTA} !important; margin-bottom: 1rem; }}
       .tarjeta-principal .distancia {{ font-size: 1.4rem; font-weight: bold; color: {ORO} !important; margin-bottom: 0; }}
       
-      /* Botones de acción HTML */
+      /* Botones HTML */
       .btn-accion {{
           display: flex; align-items: center; justify-content: center;
           width: 100%; padding: 1.2rem; margin-bottom: 1rem;
@@ -133,12 +93,8 @@ st.markdown(
       .btn-llamar {{ background-color: #2E7D32 !important; }}
       .btn-ruta {{ background-color: {AZUL} !important; }}
 
-      /* Estilo del desplegable para que no se rompa */
-      [data-testid="stExpander"] summary {{
-          font-size: 1.1rem !important;
-          color: {AZUL} !important;
-          font-weight: bold !important;
-      }}
+      /* Checkbox grande para ver más */
+      .stCheckbox label {{ font-size: 1.2rem !important; font-weight: bold !important; color: {AZUL} !important; }}
       
       #MainMenu, footer, header {{visibility: hidden;}}
     </style>
@@ -178,7 +134,6 @@ def _normalizar(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df["EstadoFuncionamiento"] = df["EstadoFuncionamiento"].fillna("").str.lower()
     df = df[df["EstadoFuncionamiento"].str.contains("vigente")]
-    df["RegionCodigo"] = pd.to_numeric(df["RegionCodigo"], errors="coerce")
     df["urgencia"] = df["TieneServicioUrgencia"].fillna("").str.strip().str.upper().eq("SI")
     df["lat"] = pd.to_numeric(df["Latitud"], errors="coerce")
     df["lon"] = pd.to_numeric(df["Longitud"], errors="coerce")
@@ -189,7 +144,6 @@ def _normalizar(df: pd.DataFrame) -> pd.DataFrame:
     df["fono"] = df["TelefonoMovil_TelefonoFijo"].fillna("").astype(str).str.replace(r"[^0-9]", "", regex=True)
     df["comuna"] = df["ComunaGlosa"].fillna("").str.strip()
     df["nombre"] = df["EstablecimientoGlosa"].fillna("").str.strip()
-    df["tipo_corto"] = df["TipoEstablecimientoGlosa"].fillna("").map(_acortar_tipo)
     return df[df["nombre"].ne("")].reset_index(drop=True)
 
 def ahora_en_chile() -> dt.datetime:
@@ -239,29 +193,76 @@ except Exception:
     st.error("Error de conexión. Revisa tu internet.")
     st.stop()
 
-ahora = ahora_en_chile()
-df["abierto"] = [esta_abierto(u, ahora) for u in df["urgencia"]]
-
-# --- GEOLOCALIZACIÓN (Botón Gigante) ---
+# Revisamos si las coordenadas vienen en la URL (desde el botón de GPS HTML)
 origen = None
-if GEO_DISPONIBLE:
-    # 1. Dibujamos el botón falso gigante
-    st.markdown(
-        '<div class="gps-fake"><p>Toca aquí para activar tu localización</p></div>', 
-        unsafe_allow_html=True
-    )
-    
-    # 2. Colocamos el componente real. El CSS lo hará invisible y lo estirará sobre el botón falso.
-    dato = streamlit_geolocation()
-    
-    if dato and dato.get("latitude") is not None:
-        origen = (float(dato["latitude"]), float(dato["longitude"]), "Tu ubicación GPS")
-        st.success("¡Ubicación activada!")
-else:
-    st.warning("El GPS no está disponible en este navegador.")
+lat_param = st.query_params.get("lat")
+lon_param = st.query_params.get("lon")
 
-# --- BUSCADOR POR COMUNA (Alternativa) ---
+if lat_param and lon_param:
+    try:
+        origen = (float(lat_param), float(lon_param), "Tu ubicación GPS")
+    except ValueError:
+        pass
+
 if origen is None:
+    # --- BOTÓN DE GPS HTML (Gigante y funcional) ---
+    components.html(
+        """
+        <!DOCTYPE html>
+        <html>
+        <body style="margin:0; padding:0; overflow:hidden;">
+          <button onclick="getLocation()" style="
+              width: 100%;
+              height: 100px;
+              background-color: #E3F2FD;
+              border: 3px dashed #1B3A5C;
+              border-radius: 16px;
+              color: #1B3A5C;
+              font-size: 1.3rem;
+              font-weight: bold;
+              cursor: pointer;
+              font-family: system-ui, -apple-system, sans-serif;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+          ">
+            📍 Toca aquí para activar tu localización
+          </button>
+          <script>
+            function getLocation() {
+              const btn = document.querySelector('button');
+              btn.innerHTML = 'Buscando GPS...';
+              if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                  (position) => {
+                    const lat = position.coords.latitude;
+                    const lon = position.coords.longitude;
+                    try {
+                        const url = new URL(window.parent.location.href);
+                        url.searchParams.set('lat', lat);
+                        url.searchParams.set('lon', lon);
+                        window.parent.location.href = url.href;
+                    } catch (e) {
+                        btn.innerHTML = 'Error de seguridad. Usa la comuna de abajo.';
+                        btn.style.backgroundColor = '#FFCDD2';
+                    }
+                  },
+                  (error) => {
+                    btn.innerHTML = '❌ GPS denegado. Acepta el permiso.';
+                    btn.style.backgroundColor = '#FFCDD2';
+                  }
+                );
+              } else {
+                btn.innerHTML = '❌ Tu navegador no soporta GPS.';
+              }
+            }
+          </script>
+        </body>
+        </html>
+        """,
+        height=110,
+    )
+
     st.markdown("<p style='text-align:center; font-size: 1.2rem; margin-top: 1rem;'>O busca por comuna:</p>", unsafe_allow_html=True)
     comunas = sorted(df["comuna"].unique())
     comuna_sel = st.selectbox("Comuna", comunas, index=comunas.index("Santiago") if "Santiago" in comunas else 0, label_visibility="collapsed")
@@ -273,8 +274,9 @@ if origen is None:
 # --- RESULTADOS ---
 if origen is not None:
     lat0, lon0, _ = origen
+    ahora = ahora_en_chile()
+    df["abierto"] = [esta_abierto(u, ahora) for u in df["urgencia"]]
     
-    # Buscamos urgencias abiertas
     candidatos = df[df["abierto"]].copy()
     
     if not candidatos.empty:
@@ -316,12 +318,15 @@ if origen is not None:
             unsafe_allow_html=True
         )
 
-        # --- OTRAS OPCIONES ---
-        with st.expander("Ver otros centros cercanos"):
+        # --- OTRAS OPCIONES (Reemplazamos el expander roto por un checkbox grande) ---
+        st.markdown("<br>", unsafe_allow_html=True)
+        ver_mas = st.checkbox("👇 Mostrar otros centros cercanos")
+        
+        if ver_mas:
             for _, fila in candidatos.iloc[1:6].iterrows():
                 st.markdown(
                     f"""
-                    <div style="background: #FFFFFF; border: 1px solid #D1D5DB; border-radius: 12px; padding: 1rem; margin-bottom: 0.5rem;">
+                    <div style="background: #FFFFFF; border: 1px solid #D1D5DB; border-radius: 12px; padding: 1rem; margin-bottom: 0.5rem; margin-top: 1rem;">
                       <h4 style="margin: 0 0 0.3rem 0; font-size: 1.2rem; color: {TINTA} !important;">{fila['nombre']}</h4>
                       <p style="margin: 0; font-size: 1rem; color: {GRIS} !important;">📍 {fila['comuna']} · A {formato_km(fila['km'])}</p>
                     </div>
@@ -336,3 +341,16 @@ if origen is not None:
                     st.markdown(f'<a href="https://www.google.com/maps/dir/?api=1&destination={fila["lat"]},{fila["lon"]}" target="_blank" class="btn-accion btn-ruta" style="font-size: 1rem !important; padding: 0.8rem; margin-bottom: 0.5rem;">🗺️ Ruta</a>', unsafe_allow_html=True)
 
 st.caption(f"Actualizado: {sello} | Fuente: Datos Abiertos MINSAL")
+
+
+"""
+SaludCerca · versión Streamlit
+================================
+Encuentra el centro de salud más cercano que está abierto ahora.
+
+Los datos se descargan en vivo desde la API de Datos Abiertos del Gobierno de
+Chile (catastro de establecimientos de salud) y se limpian en memoria. No hay
+base de datos ni almacenamiento de datos personales.
+
+Autoría: Cristian Acevedo, Rodrigo Gómez, Marcelo Araya, Nathaly Donoso
+"""

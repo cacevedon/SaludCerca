@@ -60,7 +60,7 @@ TIPOS_CORTOS = {
     "Centro de Regulación Médica de las Urgencias": "Regulador SAMU",
 }
 
-st.set_page_config(page_title="Servicio Médico de Urgencia más cercano", page_icon="📍", layout="centered")
+st.set_page_config(page_title="Centro de Salud con Urgencia más cercano", page_icon="📍", layout="centered")
 
 # --------------------------------------------------------------------------
 # CSS: Botones Gigantes y Textos Legibles
@@ -71,8 +71,9 @@ st.markdown(
       .stApp {{ background-color: {PAPEL} !important; }}
       h1, h2, h3, p, label {{ font-family: system-ui, -apple-system, sans-serif !important; color: {TINTA} !important; }}
       
+      /* Ajuste del título para que no ocupe toda la pantalla en móviles */
       .cabecera {{ text-align: center; margin-bottom: 1.5rem; }}
-      .cabecera h1 {{ font-size: 2.2rem; line-height: 1.1; color: {AZUL} !important; font-weight: 800; }}
+      .cabecera h1 {{ font-size: 1.8rem; line-height: 1.2; color: {AZUL} !important; font-weight: 800; }}
 
       /* Estilo para el botón nativo de Streamlit (GPS) */
       div.stButton > button:first-child {{
@@ -212,7 +213,7 @@ st.markdown(
     """
     <div class="cabecera">
       <p>Datos Abiertos de Salud · Chile</p>
-      <h1>Centro Médico más cercano</h1>
+      <h1>Centro de Salud con servicio de Urgencia más cercano</h1>
     </div>
     """,
     unsafe_allow_html=True,
@@ -268,8 +269,7 @@ if origen is not None:
     ahora = ahora_en_chile()
     df["abierto"] = [esta_abierto(u, ahora) for u in df["urgencia"]]
     
-    # --- NUEVO TOGGLE VISIBLE ---
-    # Por defecto value=False, por lo que solo busca urgencias.
+    # --- TOGGLE VISIBLE ---
     incluir_todos = st.toggle("🟢 Incluir centros sin urgencia (CESFAM, etc.)", value=False)
     
     # Filtramos según la elección del usuario

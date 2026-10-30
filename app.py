@@ -60,7 +60,7 @@ TIPOS_CORTOS = {
     "Centro de Regulación Médica de las Urgencias": "Regulador SAMU",
 }
 
-st.set_page_config(page_title="SaludCerca", page_icon="📍", layout="centered")
+st.set_page_config(page_title="Centro Médico más cercano", page_icon="📍", layout="centered")
 
 # --------------------------------------------------------------------------
 # CSS: Botones Gigantes y Textos Legibles
@@ -87,6 +87,20 @@ st.markdown(
       }}
       div.stButton > button:first-child:hover {{
           background-color: #BBDEFB !important;
+      }}
+
+      /* Estilo altamente visible para el Toggle de Urgencias */
+      div[data-testid="stToggle"] {{
+          background-color: #FFF3E0;
+          padding: 1rem;
+          border-radius: 12px;
+          border: 2px solid #F57C00;
+          margin-bottom: 1.5rem;
+      }}
+      div[data-testid="stToggle"] label p {{
+          font-size: 1.2rem !important;
+          font-weight: 800 !important;
+          color: #E65100 !important;
       }}
 
       /* Tarjeta principal */
@@ -198,7 +212,7 @@ st.markdown(
     """
     <div class="cabecera">
       <p>Datos Abiertos de Salud · Chile</p>
-      <h1>¿A dónde la llevo?</h1>
+      <h1>Centro Médico más cercano</h1>
     </div>
     """,
     unsafe_allow_html=True,
@@ -254,14 +268,25 @@ if origen is not None:
     ahora = ahora_en_chile()
     df["abierto"] = [esta_abierto(u, ahora) for u in df["urgencia"]]
     
-    candidatos = df[df["abierto"]].copy()
+    # --- NUEVO TOGGLE VISIBLE ---
+    # Por defecto value=False, por lo que solo busca urgencias.
+    incluir_todos = st.toggle("🟢 Incluir centros sin urgencia (CESFAM, etc.)", value=False)
+    
+    # Filtramos según la elección del usuario
+    if incluir_todos:
+        candidatos = df[df["abierto"]].copy()
+    else:
+        candidatos = df[df["abierto"] & df["urgencia"]].copy()
     
     if not candidatos.empty:
         candidatos["km"] = [distancia_km(lat0, lon0, la, lo) for la, lo in zip(candidatos["lat"], candidatos["lon"])]
         candidatos = candidatos[candidatos["km"] <= 50].sort_values("km")
 
     if candidatos.empty:
-        st.error("No hay centros abiertos a menos de 50 km. Llama al SAMU (131).")
+        if incluir_todos:
+            st.error("No hay centros abiertos a menos de 50 km. Llama al SAMU (131).")
+        else:
+            st.error("No hay urgencias abiertas a menos de 50 km. Activa la casilla de arriba para ampliar la búsqueda o llama al SAMU (131).")
     else:
         st.markdown("<hr style='margin: 1.5rem 0; border: 1px solid #E4E1D9;'>", unsafe_allow_html=True)
         

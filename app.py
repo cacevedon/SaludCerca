@@ -20,6 +20,13 @@ import pandas as pd
 import requests
 import streamlit as st
 
+try:  # componente de geolocalización del navegador
+    from streamlit_geolocation import streamlit_geolocation
+
+    GEO_DISPONIBLE = True
+except Exception:  # si no está instalado, la app sigue funcionando por comuna
+    GEO_DISPONIBLE = False
+
 # --------------------------------------------------------------------------
 # Configuración general
 # --------------------------------------------------------------------------
@@ -32,6 +39,36 @@ TINTA = "#132A42"
 ORO = "#C6A15B"
 PAPEL = "#F7F5F0"
 GRIS = "#5B6B7A"
+
+TIPOS_CORTOS = {
+    "Servicio de Atención Primaria de Urgencia (SAPU)": "SAPU",
+    "Servicio de Atención Primaria de Urgencia de Alta Resolutividad (SAR)": "SAR",
+    "Servicio de Urgencia Rural (SUR)": "SUR",
+    "Centro de Salud Familiar (CESFAM)": "CESFAM",
+    "Centro Comunitario de Salud Familiar (CECOSF)": "CECOSF",
+    "Posta de Salud Rural (PSR)": "Posta rural",
+    "Centro de Salud Privado": "Centro privado",
+    "Centro  Diagnóstico y Tratamiento Privado": "Centro diagnóstico",
+    "Centro Comunitario de Salud Mental  (COSAM)": "COSAM",
+    "Sala  Externa de Toma de Muestras (SETM)": "Toma de muestras",
+    "Unidad de Procedimientos Móvil": "Unidad móvil",
+    "Unidad de Salud Funcionarios": "Unidad de salud",
+    "Dirección Servicio de Salud": "Dirección SS",
+    "Programa de Reparación y Atención Integral de Salud (PRAIS)": "PRAIS",
+    "Centro de Diálisis": "Centro de diálisis",
+    "Laboratorio Clínico": "Laboratorio",
+    "Clínica Dental": "Clínica dental",
+    "Centro de Especialidades": "Especialidades",
+    "Centro de Especialidades de Atención Primaria (CEAP)": "Especialidades APS",
+    "Centro Corporación para la Nutrición Infantil (CONIN)": "CONIN",
+    "Centro de Rehabilitación": "Rehabilitación",
+    "Centro de Salud Comunitario para Personas con Demencia": "Demencia",
+    "Centro de Regulación Médica de las Urgencias (SAMU)": "Regulador SAMU",
+    "Consultorio General Rural (CGR)": "Consultorio rural",
+    "Consultorio General Urbano (CGU)": "Consultorio urbano",
+    "Centro de Salud Comunitario": "Centro comunitario",
+    "Centro de Regulación Médica de las Urgencias": "Regulador SAMU",
+}
 
 REGIONES = {
     1: "Tarapacá", 2: "Antofagasta", 3: "Atacama", 4: "Coquimbo",
@@ -105,8 +142,14 @@ def cargar_catastro() -> tuple[pd.DataFrame, str]:
 
     df = pd.DataFrame(registros)
     df = _normalizar(df)
-    sello = dt.datetime.now().strftime("%d-%m-%Y %H:%M")
+    sello = ahora_en_chile().strftime("%d-%m-%Y %H:%M")
     return df, sello
+
+
+def _acortar_tipo(tipo: str) -> str:
+    """Nombre del tipo de recinto en versión corta, para que la tabla no se estire."""
+    texto = TIPOS_CORTOS.get(tipo, tipo)
+    return texto if len(texto) <= 22 else texto[:21].rstrip(" ,.") + "…"
 
 
 def _normalizar(df: pd.DataFrame) -> pd.DataFrame:
@@ -166,6 +209,7 @@ def _normalizar(df: pd.DataFrame) -> pd.DataFrame:
     df["nombre"] = df["EstablecimientoGlosa"].fillna("").str.strip()
     df["tipo"] = df["TipoEstablecimientoGlosa"].fillna("").str.strip()
     df["dependencia"] = df["DependenciaAdministrativa"].fillna("").str.strip()
+    df["tipo_corto"] = df["tipo"].map(_acortar_tipo)
 
     return df[df["nombre"].ne("")].reset_index(drop=True)
 
@@ -180,14 +224,17 @@ def ahora_en_chile() -> dt.datetime:
         return dt.datetime.utcnow() - dt.timedelta(hours=4)
 
 
-def esta_abierto(urgencia: bool, ahora: dt.datetime) -> tuple[bool, str]:
-    """Regla explícita: urgencia = día y noche; resto = horario hábil."""
+def esta_abierto(urgencia: bool, ahora: dt.datetime) -> tuple[bool, str, str]:
+    """Regla explícita: urgencia = día y noche; resto = horario hábil.
+
+    Devuelve (abierto, texto_largo_para_la_ficha, texto_corto_para_la_tabla).
+    """
     if urgencia:
-        return True, "Urgencia declarada · atiende día y noche"
+        return True, "Urgencia declarada · atiende día y noche", "Urgencia 24/7"
     habil = ahora.weekday() < 5 and 8 <= ahora.hour < 17
     if habil:
-        return True, "Horario hábil estimado (lun a vie, 08:00–17:00)"
-    return False, "Fuera de horario hábil"
+        return True, "Horario hábil estimado (lun a vie, 08:00–17:00)", "Horario hábil"
+    return False, "Fuera de horario hábil", "Cerrado"
 
 
 def distancia_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -233,13 +280,36 @@ def ubicacion_desde_parametros() -> tuple[float, float] | None:
         return None
 
 
-def panel_ubicacion(df: pd.DataFrame) -> tuple[float, float, str] | None:
-    st.sidebar.markdown("### ¿Desde dónde buscas?")
+def ubicacion_geolocalizada() -> tuple[float, float, str] | None:
+    """Pide la ubicación al navegador con un botón. Devuelve None si no hay permiso."""
+    if not GEO_DISPONIBLE:
+        return None
 
+    st.sidebar.caption(
+        "Pulsa el botón de ubicación y acepta el permiso del navegador. "
+        "Si aparece en inglés, es «Get Location». La ubicación se usa solo en tu sesión."
+    )
+    try:
+        dato = streamlit_geolocation()
+    except Exception:
+        return None
+
+    if not dato or dato.get("latitude") is None:
+        return None
+
+    precision = dato.get("accuracy")
+    if precision:
+        st.sidebar.caption(f"Ubicación obtenida (precisión ±{int(precision)} m).")
+    return float(dato["latitude"]), float(dato["longitude"]), "Tu ubicación actual"
+
+
+def panel_ubicacion(df: pd.DataFrame) -> tuple[float, float, str] | None:
+    """Alternativa manual: comuna o coordenadas pegadas."""
     metodo = st.sidebar.radio(
         "Método",
         ["Elegir comuna", "Pegar coordenadas"],
         label_visibility="collapsed",
+        horizontal=True,
     )
 
     if metodo == "Elegir comuna":
@@ -299,7 +369,7 @@ if df.empty:
     st.stop()
 
 ahora = ahora_en_chile()
-df["abierto"], df["estado_texto"] = zip(
+df["abierto"], df["estado_texto"], df["estado_corto"] = zip(
     *[esta_abierto(u, ahora) for u in df["urgencia"]]
 )
 
@@ -310,7 +380,19 @@ with st.sidebar:
         origen = (enlace[0], enlace[1], "Coordenadas del enlace")
         st.caption("Ubicación tomada del enlace compartido.")
     else:
-        origen = panel_ubicacion(df)
+        if GEO_DISPONIBLE:
+            st.sidebar.markdown("### ¿Desde dónde buscas?")
+            origen = ubicacion_geolocalizada()
+        else:
+            st.sidebar.markdown("### ¿Desde dónde buscas?")
+            origen = None
+            st.sidebar.caption("Elige una comuna o pega tus coordenadas.")
+
+        if origen is None:
+            if GEO_DISPONIBLE:
+                st.sidebar.markdown("---")
+                st.sidebar.caption("Si prefieres no compartir tu ubicación:")
+            origen = panel_ubicacion(df)
 
     st.markdown("---")
     radio = st.slider("Radio de búsqueda (km)", 5, 200, 40, step=5)
@@ -333,7 +415,7 @@ abiertos_ahora = int(df["abierto"].sum())
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Recintos vigentes", f"{len(df):,}".replace(",", "."))
 c2.metric("Abiertos ahora", f"{abiertos_ahora:,}".replace(",", "."))
-c3.metric("Con urgencia", f"{int(df['urgencia'].sum()):,}".replace(",", "."))
+c3.metric("Urgencias 24/7", f"{int(df['urgencia'].sum()):,}".replace(",", "."))
 c4.metric("Comunas", f"{df['comuna'].nunique():,}".replace(",", "."))
 st.caption(
     f"Son las {ahora:%H:%M} del {ahora:%d-%m-%Y} en Chile. "
@@ -390,7 +472,7 @@ with col_a:
           <h3>{primero['nombre']}</h3>
           <p class="dir">{primero['direccion'] or 'Sin dirección publicada'} · {primero['comuna']}</p>
           <p class="estado">{primero['estado_texto']}</p>
-          <p class="nota">{primero['tipo']}{' · ' + primero['dependencia'] if primero['dependencia'] else ''}</p>
+          <p class="nota">{primero['tipo_corto']}{' · ' + primero['dependencia'] if primero['dependencia'] else ''}</p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -409,7 +491,7 @@ with col_b:
 st.markdown("---")
 
 # ------------------------------------------------------------------ lista
-tabla = resto[["km", "nombre", "tipo", "comuna", "estado_texto", "fono", "lat", "lon"]].copy()
+tabla = resto[["km", "nombre", "tipo_corto", "comuna", "estado_corto", "fono", "lat", "lon"]].copy()
 tabla.insert(0, "distancia", [formato_km(k) for k in tabla["km"]])
 tabla["mapa"] = [
     f"https://www.google.com/maps/dir/?api=1&destination={la},{lo}"
@@ -418,23 +500,23 @@ tabla["mapa"] = [
 tabla["tel"] = [("tel:+56" + f) if f else None for f in tabla["fono"]]
 
 st.dataframe(
-    tabla[["distancia", "nombre", "tipo", "comuna", "estado_texto", "tel", "mapa"]],
+    tabla[["distancia", "nombre", "tipo_corto", "comuna", "estado_corto", "tel", "mapa"]],
     hide_index=True,
     use_container_width=True,
     column_config={
-        "distancia": st.column_config.TextColumn("Distancia", width="small"),
+        "distancia": st.column_config.TextColumn("Dist.", width="small"),
         "nombre": st.column_config.TextColumn("Recinto", width="large"),
-        "tipo": st.column_config.TextColumn("Tipo", width="small"),
+        "tipo_corto": st.column_config.TextColumn("Tipo", width="small"),
         "comuna": st.column_config.TextColumn("Comuna", width="small"),
-        "estado_texto": st.column_config.TextColumn("Estado", width="medium"),
-        "tel": st.column_config.LinkColumn("Llamar", display_text="Llamar"),
-        "mapa": st.column_config.LinkColumn("Ruta", display_text="Ver ruta"),
+        "estado_corto": st.column_config.TextColumn("Estado", width="small"),
+        "tel": st.column_config.LinkColumn("Llamar", display_text="Llamar", width="small"),
+        "mapa": st.column_config.LinkColumn("Ruta", display_text="Ver ruta", width="small"),
     },
 )
 
 st.download_button(
     "Descargar estos resultados (CSV)",
-    tabla[["distancia", "nombre", "tipo", "comuna", "estado_texto", "fono"]].to_csv(index=False).encode("utf-8-sig"),
+    tabla[["distancia", "nombre", "tipo_corto", "comuna", "estado_corto", "fono"]].to_csv(index=False).encode("utf-8-sig"),
     file_name="saludcerca_resultados.csv",
     mime="text/csv",
 )

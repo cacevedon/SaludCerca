@@ -2,3 +2,4 @@ streamlit
 pandas
 requests
 streamlit-geolocation==0.0.10
+streamlit-js-eval

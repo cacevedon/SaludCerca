@@ -1,10 +1,22 @@
+"""
+SaludCerca · versión Streamlit
+================================
+Encuentra el centro de salud más cercano que está abierto ahora.
+
+Los datos se descargan en vivo desde la API de Datos Abiertos del Gobierno de
+Chile (catastro de establecimientos de salud) y se limpian en memoria. No hay
+base de datos ni almacenamiento de datos personales.
+
+Autoría: Cristian Acevedo, Rodrigo Gómez, Marcelo Araya, Nathaly Donoso
+"""
+
 from __future__ import annotations
 import datetime as dt
 import math
 import pandas as pd
 import requests
 import streamlit as st
-import streamlit.components.v1 as components
+from streamlit_js_eval import get_geolocation
 
 # --------------------------------------------------------------------------
 # Configuración general
@@ -48,26 +60,34 @@ TIPOS_CORTOS = {
     "Centro de Regulación Médica de las Urgencias": "Regulador SAMU",
 }
 
-st.set_page_config(
-    page_title="SaludCerca",
-    page_icon="📍",
-    layout="centered",
-    initial_sidebar_state="collapsed",
-)
+st.set_page_config(page_title="SaludCerca", page_icon="📍", layout="centered")
 
 # --------------------------------------------------------------------------
-# CSS Optimizado (Sin romper iconos y con botones gigantes)
+# CSS: Botones Gigantes y Textos Legibles
 # --------------------------------------------------------------------------
 st.markdown(
     f"""
     <style>
       .stApp {{ background-color: {PAPEL} !important; }}
-      
-      /* Solo aplicamos fuentes a los textos, NO a los divs/span para no romper iconos */
       h1, h2, h3, p, label {{ font-family: system-ui, -apple-system, sans-serif !important; color: {TINTA} !important; }}
       
       .cabecera {{ text-align: center; margin-bottom: 1.5rem; }}
       .cabecera h1 {{ font-size: 2.2rem; line-height: 1.1; color: {AZUL} !important; font-weight: 800; }}
+
+      /* Estilo para el botón nativo de Streamlit (GPS) */
+      div.stButton > button:first-child {{
+          height: 100px;
+          width: 100%;
+          background-color: #E3F2FD !important;
+          border: 3px dashed {AZUL} !important;
+          border-radius: 16px !important;
+          color: {AZUL} !important;
+          font-size: 1.3rem !important;
+          font-weight: bold !important;
+      }}
+      div.stButton > button:first-child:hover {{
+          background-color: #BBDEFB !important;
+      }}
 
       /* Tarjeta principal */
       .tarjeta-principal {{ 
@@ -82,7 +102,7 @@ st.markdown(
       .tarjeta-principal .dir {{ font-size: 1.2rem; color: {TINTA} !important; margin-bottom: 1rem; }}
       .tarjeta-principal .distancia {{ font-size: 1.4rem; font-weight: bold; color: {ORO} !important; margin-bottom: 0; }}
       
-      /* Botones HTML */
+      /* Botones de acción HTML */
       .btn-accion {{
           display: flex; align-items: center; justify-content: center;
           width: 100%; padding: 1.2rem; margin-bottom: 1rem;
@@ -93,9 +113,7 @@ st.markdown(
       .btn-llamar {{ background-color: #2E7D32 !important; }}
       .btn-ruta {{ background-color: {AZUL} !important; }}
 
-      /* Checkbox grande para ver más */
-      .stCheckbox label {{ font-size: 1.2rem !important; font-weight: bold !important; color: {AZUL} !important; }}
-      
+      .stCheckbox label {{ font-size: 1.1rem !important; font-weight: bold !important; color: {AZUL} !important; }}
       #MainMenu, footer, header {{visibility: hidden;}}
     </style>
     """,
@@ -193,76 +211,35 @@ except Exception:
     st.error("Error de conexión. Revisa tu internet.")
     st.stop()
 
-# Revisamos si las coordenadas vienen en la URL (desde el botón de GPS HTML)
 origen = None
-lat_param = st.query_params.get("lat")
-lon_param = st.query_params.get("lon")
 
-if lat_param and lon_param:
-    try:
-        origen = (float(lat_param), float(lon_param), "Tu ubicación GPS")
-    except ValueError:
-        pass
+# 1. Revisamos si el usuario ya tocó el botón del GPS
+if "gps_activado" not in st.session_state:
+    st.session_state["gps_activado"] = False
 
-if origen is None:
-    # --- BOTÓN DE GPS HTML (Gigante y funcional) ---
-    components.html(
-        """
-        <!DOCTYPE html>
-        <html>
-        <body style="margin:0; padding:0; overflow:hidden;">
-          <button onclick="getLocation()" style="
-              width: 100%;
-              height: 100px;
-              background-color: #E3F2FD;
-              border: 3px dashed #1B3A5C;
-              border-radius: 16px;
-              color: #1B3A5C;
-              font-size: 1.3rem;
-              font-weight: bold;
-              cursor: pointer;
-              font-family: system-ui, -apple-system, sans-serif;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-          ">
-            📍 Toca aquí para activar tu localización
-          </button>
-          <script>
-            function getLocation() {
-              const btn = document.querySelector('button');
-              btn.innerHTML = 'Buscando GPS...';
-              if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(
-                  (position) => {
-                    const lat = position.coords.latitude;
-                    const lon = position.coords.longitude;
-                    try {
-                        const url = new URL(window.parent.location.href);
-                        url.searchParams.set('lat', lat);
-                        url.searchParams.set('lon', lon);
-                        window.parent.location.href = url.href;
-                    } catch (e) {
-                        btn.innerHTML = 'Error de seguridad. Usa la comuna de abajo.';
-                        btn.style.backgroundColor = '#FFCDD2';
-                    }
-                  },
-                  (error) => {
-                    btn.innerHTML = '❌ GPS denegado. Acepta el permiso.';
-                    btn.style.backgroundColor = '#FFCDD2';
-                  }
-                );
-              } else {
-                btn.innerHTML = '❌ Tu navegador no soporta GPS.';
-              }
-            }
-          </script>
-        </body>
-        </html>
-        """,
-        height=110,
-    )
+# 2. Botón nativo de Streamlit (sin iframes, 100% seguro)
+if not st.session_state["gps_activado"]:
+    if st.button("📍 TOCA AQUÍ PARA ACTIVAR TU LOCALIZACIÓN", use_container_width=True):
+        st.session_state["gps_activado"] = True
+        st.rerun()
 
+# 3. Si se activó, pedimos las coordenadas
+if st.session_state["gps_activado"]:
+    loc = get_geolocation()
+    if loc and 'coords' in loc:
+        lat = loc['coords']['latitude']
+        lon = loc['coords']['longitude']
+        origen = (lat, lon, "Tu ubicación actual")
+        st.success("¡Ubicación encontrada!")
+    else:
+        st.info("Buscando señal GPS... Acepta el permiso del navegador.")
+        # Botón para cancelar si se demora o falla
+        if st.button("Cancelar y buscar por comuna"):
+            st.session_state["gps_activado"] = False
+            st.rerun()
+
+# 4. Si no hay GPS, mostramos el buscador de comunas
+if origen is None and not st.session_state["gps_activado"]:
     st.markdown("<p style='text-align:center; font-size: 1.2rem; margin-top: 1rem;'>O busca por comuna:</p>", unsafe_allow_html=True)
     comunas = sorted(df["comuna"].unique())
     comuna_sel = st.selectbox("Comuna", comunas, index=comunas.index("Santiago") if "Santiago" in comunas else 0, label_visibility="collapsed")
@@ -288,7 +265,7 @@ if origen is not None:
     else:
         st.markdown("<hr style='margin: 1.5rem 0; border: 1px solid #E4E1D9;'>", unsafe_allow_html=True)
         
-        # --- TARJETA GIGANTE DEL PRIMER RESULTADO ---
+        # --- TARJETA GIGANTE ---
         primero = candidatos.iloc[0]
         st.markdown(
             f"""
@@ -303,22 +280,13 @@ if origen is not None:
         
         # --- BOTONES GIGANTES ---
         if primero["fono"]:
-            st.markdown(
-                f'<a href="tel:+56{primero["fono"]}" class="btn-accion btn-llamar">📞 LLAMAR AHORA</a>', 
-                unsafe_allow_html=True
-            )
+            st.markdown(f'<a href="tel:+56{primero["fono"]}" class="btn-accion btn-llamar">📞 LLAMAR AHORA</a>', unsafe_allow_html=True)
         else:
-            st.markdown(
-                '<div class="btn-accion" style="background-color: #9E9E9E !important;">📞 SIN TELÉFONO</div>', 
-                unsafe_allow_html=True
-            )
+            st.markdown('<div class="btn-accion" style="background-color: #9E9E9E !important;">📞 SIN TELÉFONO</div>', unsafe_allow_html=True)
 
-        st.markdown(
-            f'<a href="https://www.google.com/maps/dir/?api=1&destination={primero["lat"]},{primero["lon"]}" target="_blank" class="btn-accion btn-ruta">🗺️ CÓMO LLEGAR</a>', 
-            unsafe_allow_html=True
-        )
+        st.markdown(f'<a href="https://www.google.com/maps/dir/?api=1&destination={primero["lat"]},{primero["lon"]}" target="_blank" class="btn-accion btn-ruta">🗺️ CÓMO LLEGAR</a>', unsafe_allow_html=True)
 
-        # --- OTRAS OPCIONES (Reemplazamos el expander roto por un checkbox grande) ---
+        # --- OTRAS OPCIONES ---
         st.markdown("<br>", unsafe_allow_html=True)
         ver_mas = st.checkbox("👇 Mostrar otros centros cercanos")
         
@@ -341,16 +309,3 @@ if origen is not None:
                     st.markdown(f'<a href="https://www.google.com/maps/dir/?api=1&destination={fila["lat"]},{fila["lon"]}" target="_blank" class="btn-accion btn-ruta" style="font-size: 1rem !important; padding: 0.8rem; margin-bottom: 0.5rem;">🗺️ Ruta</a>', unsafe_allow_html=True)
 
 st.caption(f"Actualizado: {sello} | Fuente: Datos Abiertos MINSAL")
-
-
-"""
-SaludCerca · versión Streamlit
-================================
-Encuentra el centro de salud más cercano que está abierto ahora.
-
-Los datos se descargan en vivo desde la API de Datos Abiertos del Gobierno de
-Chile (catastro de establecimientos de salud) y se limpian en memoria. No hay
-base de datos ni almacenamiento de datos personales.
-
-Autoría: Cristian Acevedo, Rodrigo Gómez, Marcelo Araya, Nathaly Donoso
-"""

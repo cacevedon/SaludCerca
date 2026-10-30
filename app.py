@@ -308,4 +308,19 @@ if origen is not None:
                 with c2:
                     st.markdown(f'<a href="https://www.google.com/maps/dir/?api=1&destination={fila["lat"]},{fila["lon"]}" target="_blank" class="btn-accion btn-ruta" style="font-size: 1rem !important; padding: 0.8rem; margin-bottom: 0.5rem;">🗺️ Ruta</a>', unsafe_allow_html=True)
 
+# --- TEXTO INICIAL (Acerca de) ---
+st.markdown("<br><br>", unsafe_allow_html=True)
+with st.expander("ℹ️ Acerca de SaludCerca"):
+    st.markdown(
+        """
+        **SaludCerca · versión Streamlit**
+        
+        Encuentra el centro de salud más cercano que está abierto ahora.
+        
+        Los datos se descargan en vivo desde la API de Datos Abiertos del Gobierno de Chile (catastro de establecimientos de salud) y se limpian en memoria. No hay base de datos ni almacenamiento de datos personales.
+        
+        **Autoría:** Cristian Acevedo, Rodrigo Gómez, Marcelo Araya, Nathaly Donoso
+        """
+    )
+
 st.caption(f"Actualizado: {sello} | Fuente: Datos Abiertos MINSAL")

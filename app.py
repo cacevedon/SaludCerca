@@ -74,10 +74,14 @@ def get_gspread_client():
         "https://spreadsheets.google.com/feeds",
         "https://www.googleapis.com/auth/drive"
     ]
-    creds_dict = st.secrets["gcp_service_account"]
-    creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-    client = gspread.authorize(creds)
-    return client
+    try:
+        creds_dict = st.secrets["gcp_service_account"]
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+        client = gspread.authorize(creds)
+        return client
+    except Exception as e:
+        print(f"Error al cargar credenciales: {e}")
+        return None
 
 def registrar_visita_gspread() -> int:
     """Lee, incrementa y guarda el contador en Google Sheets."""
@@ -86,13 +90,17 @@ def registrar_visita_gspread() -> int:
 
     try:
         client = get_gspread_client()
+        if client is None:
+            raise Exception("No se pudo autenticar con Google Sheets.")
+
         # Abre la hoja usando la URL guardada en los secretos
         sh = client.open_by_url(st.secrets["gsheets"]["spreadsheet_url"])
         worksheet = sh.sheet1 # Usa la primera pestaña
         
         # Lee el valor actual de la celda A1
         valor_actual_str = worksheet.acell('A1').value
-        visitas = int(valor_actual_str) if valor_actual_str else 1000
+        # Si no hay valor, empezamos en 32 (para que el próximo sea 33)
+        visitas = int(valor_actual_str) if valor_actual_str else 32
         
         # Incrementa y escribe el nuevo valor
         visitas += 1
@@ -103,12 +111,11 @@ def registrar_visita_gspread() -> int:
         return visitas
         
     except Exception as e:
-        # Si algo falla (ej. cuota de API, red), no rompemos la app.
-        # Mostramos un número por defecto y un aviso en los logs.
+        # Si algo falla, no rompemos la app. Usamos 32 como respaldo.
         print(f"Error al conectar con Google Sheets: {e}")
         st.session_state["ya_visito"] = True
-        st.session_state["contador_actual"] = 1000 # Fallback
-        return 1000
+        st.session_state["contador_actual"] = 32 # Respaldo
+        return 32
 
 # Ejecutamos el contador
 num_visitas = registrar_visita_gspread()
@@ -123,6 +130,7 @@ st.markdown(
       .stApp {{ background-color: {PAPEL} !important; }}
       h1, h2, h3, p, label {{ font-family: system-ui, -apple-system, sans-serif !important; color: {TINTA} !important; }}
       
+      /* Contador de visitas */
       .contador {{ 
           text-align: center; 
           font-size: 0.9rem; 
@@ -132,9 +140,11 @@ st.markdown(
           letter-spacing: 0.5px;
       }}
       
+      /* Cabecera */
       .cabecera {{ text-align: center; margin-bottom: 1.5rem; }}
       .cabecera h1 {{ font-size: 1.8rem; line-height: 1.2; color: {AZUL} !important; font-weight: 800; }}
 
+      /* Estilo para el botón nativo de Streamlit (GPS) */
       div.stButton > button:first-child {{
           height: 100px;
           width: 100%;
@@ -149,6 +159,7 @@ st.markdown(
           background-color: #BBDEFB !important;
       }}
 
+      /* Estilo altamente visible para el Toggle de Urgencias */
       div[data-testid="stToggle"] {{
           background-color: #FFF3E0;
           padding: 1rem;
@@ -162,6 +173,7 @@ st.markdown(
           color: #E65100 !important;
       }}
 
+      /* Tarjeta principal */
       .tarjeta-principal {{ 
           background: #FFFFFF; 
           border: 3px solid {ORO}; 
@@ -174,6 +186,7 @@ st.markdown(
       .tarjeta-principal .dir {{ font-size: 1.2rem; color: {TINTA} !important; margin-bottom: 1rem; }}
       .tarjeta-principal .distancia {{ font-size: 1.4rem; font-weight: bold; color: {ORO} !important; margin-bottom: 0; }}
       
+      /* Botones de acción HTML */
       .btn-accion {{
           display: flex; align-items: center; justify-content: center;
           width: 100%; padding: 1.2rem; margin-bottom: 1rem;
@@ -192,7 +205,7 @@ st.markdown(
 )
 
 # --------------------------------------------------------------------------
-# Lógica de Datos (sin cambios)
+# Lógica de Datos (Catastro MINSAL)
 # --------------------------------------------------------------------------
 @st.cache_data(ttl=60 * 60 * 12, show_spinner=False)
 def cargar_catastro() -> tuple[pd.DataFrame, str]:
@@ -263,8 +276,9 @@ def tiempo_auto(km: float) -> str:
     return f"≈ {minutos // 60} h {minutos % 60} min"
 
 # --------------------------------------------------------------------------
-# INTERFAZ PRINCIPAL (sin cambios en la lógica de búsqueda)
+# INTERFAZ PRINCIPAL
 # --------------------------------------------------------------------------
+# Mostramos el contador justo al inicio
 st.markdown(f'<div class="contador">Eres el usuario número {num_visitas_str} del sistema</div>', unsafe_allow_html=True)
 
 st.markdown(
@@ -286,14 +300,17 @@ except Exception:
 
 origen = None
 
+# 1. Revisamos si el usuario ya tocó el botón del GPS
 if "gps_activado" not in st.session_state:
     st.session_state["gps_activado"] = False
 
+# 2. Botón nativo de Streamlit (sin iframes, 100% seguro)
 if not st.session_state["gps_activado"]:
     if st.button("📍 TOCA AQUÍ PARA ACTIVAR TU LOCALIZACIÓN", use_container_width=True):
         st.session_state["gps_activado"] = True
         st.rerun()
 
+# 3. Si se activó, pedimos las coordenadas
 if st.session_state["gps_activado"]:
     loc = get_geolocation()
     if loc and 'coords' in loc:
@@ -303,10 +320,12 @@ if st.session_state["gps_activado"]:
         st.success("¡Ubicación encontrada!")
     else:
         st.info("Buscando señal GPS... Acepta el permiso del navegador.")
+        # Botón para cancelar si se demora o falla
         if st.button("Cancelar y buscar por comuna"):
             st.session_state["gps_activado"] = False
             st.rerun()
 
+# 4. Si no hay GPS, mostramos el buscador de comunas
 if origen is None and not st.session_state["gps_activado"]:
     st.markdown("<p style='text-align:center; font-size: 1.2rem; margin-top: 1rem;'>O busca por comuna:</p>", unsafe_allow_html=True)
     comunas = sorted(df["comuna"].unique())
@@ -316,13 +335,16 @@ if origen is None and not st.session_state["gps_activado"]:
     if not del_lugar.empty:
         origen = (float(del_lugar["lat"].mean()), float(del_lugar["lon"].mean()), f"Comuna de {comuna_sel}")
 
+# --- RESULTADOS ---
 if origen is not None:
     lat0, lon0, _ = origen
     ahora = ahora_en_chile()
     df["abierto"] = [esta_abierto(u, ahora) for u in df["urgencia"]]
     
+    # --- TOGGLE VISIBLE ---
     incluir_todos = st.toggle("🟢 Incluir centros sin urgencia (CESFAM, etc.)", value=False)
     
+    # Filtramos según la elección del usuario
     if incluir_todos:
         candidatos = df[df["abierto"]].copy()
     else:
@@ -340,6 +362,7 @@ if origen is not None:
     else:
         st.markdown("<hr style='margin: 1.5rem 0; border: 1px solid #E4E1D9;'>", unsafe_allow_html=True)
         
+        # --- TARJETA GIGANTE ---
         primero = candidatos.iloc[0]
         st.markdown(
             f"""
@@ -352,6 +375,7 @@ if origen is not None:
             unsafe_allow_html=True,
         )
         
+        # --- BOTONES GIGANTES ---
         if primero["fono"]:
             st.markdown(f'<a href="tel:+56{primero["fono"]}" class="btn-accion btn-llamar">📞 LLAMAR AHORA</a>', unsafe_allow_html=True)
         else:
@@ -359,6 +383,7 @@ if origen is not None:
 
         st.markdown(f'<a href="https://www.google.com/maps/dir/?api=1&destination={primero["lat"]},{primero["lon"]}" target="_blank" class="btn-accion btn-ruta">🗺️ CÓMO LLEGAR</a>', unsafe_allow_html=True)
 
+        # --- OTRAS OPCIONES ---
         st.markdown("<br>", unsafe_allow_html=True)
         ver_mas = st.checkbox("👇 Mostrar otros centros cercanos")
         
@@ -380,6 +405,7 @@ if origen is not None:
                 with c2:
                     st.markdown(f'<a href="https://www.google.com/maps/dir/?api=1&destination={fila["lat"]},{fila["lon"]}" target="_blank" class="btn-accion btn-ruta" style="font-size: 1rem !important; padding: 0.8rem; margin-bottom: 0.5rem;">🗺️ Ruta</a>', unsafe_allow_html=True)
 
+# --- TEXTO INICIAL (Acerca de) ---
 st.markdown("<br><br>", unsafe_allow_html=True)
 with st.expander("ℹ️ Acerca de SaludCerca"):
     st.markdown(

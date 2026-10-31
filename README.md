@@ -3,8 +3,6 @@
 Toma tu ubicación y te muestra el centro de salud más cercano que esté **abierto ahora**,
 usando el catastro público de establecimientos del Ministerio de Salud de Chile.
 
-**Equipo:** Cristian Acevedo, Rodrigo Gómez, Marcelo Araya, Nathaly Donoso · 2026
-
 ## Dos versiones del prototipo
 
 | Versión | Archivo | Qué aporta |

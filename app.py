@@ -57,11 +57,11 @@ TIPOS_CORTOS = {
 st.set_page_config(page_title="Centro de Salud con Urgencia más cercano", page_icon="📍", layout="centered")
 
 # --------------------------------------------------------------------------
-# LÓGICA DEL CONTADOR CON GOOGLE SHEETS (CORREGIDA)
+# LÓGICA DEL CONTADOR CON GOOGLE SHEETS
 # --------------------------------------------------------------------------
 @st.cache_resource
 def get_gspread_client():
-    """Crea y cachea el cliente de gspread usando los secretos."""
+    """Crea y cachea el cliente de gspread."""
     scopes = [
         "https://spreadsheets.google.com/feeds",
         "https://www.googleapis.com/auth/drive"
@@ -95,7 +95,6 @@ def registrar_visita_gspread() -> int:
         # Incrementar
         visitas += 1
         
-        # ✅ ESCRITURA CORREGIDA: usar matriz bidimensional [[valor]]
         worksheet.update('A1', [[str(visitas)]])
         
         st.session_state["ya_visito"] = True

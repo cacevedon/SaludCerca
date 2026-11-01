@@ -1,5 +1,9 @@
 """
-SaludCerca
+SaludCerca · versión Streamlit
+================================
+Encuentra el centro de salud más cercano que está abierto ahora.
+
+Autoría: Cristian Acevedo, Rodrigo Gómez, Marcelo Araya, Nathaly Donoso
 """
 
 from __future__ import annotations
@@ -61,54 +65,44 @@ st.set_page_config(page_title="Centro de Salud con Urgencia más cercano", page_
 # --------------------------------------------------------------------------
 @st.cache_resource
 def get_gspread_client():
-    """Crea y cachea el cliente de gspread."""
     scopes = [
         "https://spreadsheets.google.com/feeds",
         "https://www.googleapis.com/auth/drive"
     ]
-    try:
-        creds_dict = st.secrets["gcp_service_account"]
-        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-        client = gspread.authorize(creds)
-        return client
-    except Exception as e:
-        st.error(f"Error al cargar credenciales: {e}")
-        return None
+    creds_dict = st.secrets["gcp_service_account"]
+    creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+    return gspread.authorize(creds)
 
-def registrar_visita_gspread() -> int:
-    """Lee, incrementa y guarda el contador en Google Sheets."""
+def registrar_visita_gspread() -> tuple[int, str | None]:
+    """Retorna (número_visitas, mensaje_error)."""
     if "ya_visito" in st.session_state:
-        return st.session_state["contador_actual"]
+        return st.session_state["contador_actual"], st.session_state.get("error_contador")
 
     try:
         client = get_gspread_client()
         if client is None:
-            return 32
+            raise Exception("No se pudo autenticar con Google Sheets.")
 
         sh = client.open_by_url(st.secrets["gsheets"]["spreadsheet_url"])
         worksheet = sh.sheet1
         
-        # Leer el valor actual
         valor_actual_str = worksheet.acell('A1').value
         visitas = int(valor_actual_str) if valor_actual_str else 32
-        
-        # Incrementar
         visitas += 1
-        
         worksheet.update('A1', [[str(visitas)]])
         
         st.session_state["ya_visito"] = True
         st.session_state["contador_actual"] = visitas
-        return visitas
+        st.session_state["error_contador"] = None
+        return visitas, None
         
     except Exception as e:
-        st.error(f"🚨 Error de conexión con Google Sheets: {e}")
         st.session_state["ya_visito"] = True
         st.session_state["contador_actual"] = 32
-        return 32
+        st.session_state["error_contador"] = str(e)
+        return 32, str(e)
 
-# Ejecutamos el contador
-num_visitas = registrar_visita_gspread()
+num_visitas, error_contador = registrar_visita_gspread()
 num_visitas_str = f"{num_visitas:,}".replace(",", ".")
 
 # --------------------------------------------------------------------------
@@ -120,64 +114,26 @@ st.markdown(
       .stApp {{ background-color: {PAPEL} !important; }}
       h1, h2, h3, p, label {{ font-family: system-ui, -apple-system, sans-serif !important; color: {TINTA} !important; }}
       
-      .contador {{ 
-          text-align: center; 
-          font-size: 0.9rem; 
-          color: {GRIS} !important; 
-          margin-bottom: 1rem; 
-          font-weight: 600;
-          letter-spacing: 0.5px;
-      }}
-      
+      .contador {{ text-align: center; font-size: 0.9rem; color: {GRIS} !important; margin-bottom: 1rem; font-weight: 600; letter-spacing: 0.5px; }}
       .cabecera {{ text-align: center; margin-bottom: 1.5rem; }}
       .cabecera h1 {{ font-size: 1.8rem; line-height: 1.2; color: {AZUL} !important; font-weight: 800; }}
 
       div.stButton > button:first-child {{
-          height: 100px;
-          width: 100%;
-          background-color: #E3F2FD !important;
-          border: 3px dashed {AZUL} !important;
-          border-radius: 16px !important;
-          color: {AZUL} !important;
-          font-size: 1.3rem !important;
-          font-weight: bold !important;
+          height: 100px; width: 100%; background-color: #E3F2FD !important;
+          border: 3px dashed {AZUL} !important; border-radius: 16px !important;
+          color: {AZUL} !important; font-size: 1.3rem !important; font-weight: bold !important;
       }}
-      div.stButton > button:first-child:hover {{
-          background-color: #BBDEFB !important;
-      }}
+      div.stButton > button:first-child:hover {{ background-color: #BBDEFB !important; }}
 
-      div[data-testid="stToggle"] {{
-          background-color: #FFF3E0;
-          padding: 1rem;
-          border-radius: 12px;
-          border: 2px solid #F57C00;
-          margin-bottom: 1.5rem;
-      }}
-      div[data-testid="stToggle"] label p {{
-          font-size: 1.2rem !important;
-          font-weight: 800 !important;
-          color: #E65100 !important;
-      }}
+      div[data-testid="stToggle"] {{ background-color: #FFF3E0; padding: 1rem; border-radius: 12px; border: 2px solid #F57C00; margin-bottom: 1.5rem; }}
+      div[data-testid="stToggle"] label p {{ font-size: 1.2rem !important; font-weight: 800 !important; color: #E65100 !important; }}
 
-      .tarjeta-principal {{ 
-          background: #FFFFFF; 
-          border: 3px solid {ORO}; 
-          border-radius: 16px; 
-          padding: 1.5rem; 
-          margin-bottom: 1.5rem; 
-          text-align: center;
-      }}
+      .tarjeta-principal {{ background: #FFFFFF; border: 3px solid {ORO}; border-radius: 16px; padding: 1.5rem; margin-bottom: 1.5rem; text-align: center; }}
       .tarjeta-principal h2 {{ font-size: 1.8rem; margin: 0 0 0.5rem 0; color: {AZUL} !important; line-height: 1.2; }}
       .tarjeta-principal .dir {{ font-size: 1.2rem; color: {TINTA} !important; margin-bottom: 1rem; }}
       .tarjeta-principal .distancia {{ font-size: 1.4rem; font-weight: bold; color: {ORO} !important; margin-bottom: 0; }}
       
-      .btn-accion {{
-          display: flex; align-items: center; justify-content: center;
-          width: 100%; padding: 1.2rem; margin-bottom: 1rem;
-          border-radius: 12px; font-size: 1.5rem; font-weight: bold;
-          text-decoration: none !important; color: #FFFFFF !important;
-          box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-      }}
+      .btn-accion {{ display: flex; align-items: center; justify-content: center; width: 100%; padding: 1.2rem; margin-bottom: 1rem; border-radius: 12px; font-size: 1.5rem; font-weight: bold; text-decoration: none !important; color: #FFFFFF !important; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }}
       .btn-llamar {{ background-color: #2E7D32 !important; }}
       .btn-ruta {{ background-color: {AZUL} !important; }}
 
@@ -211,25 +167,25 @@ def cargar_catastro() -> tuple[pd.DataFrame, str]:
     sello = ahora_en_chile().strftime("%d-%m-%Y %H:%M")
     return df, sello
 
-def _acortar_tipo(tipo: str) -> str:
-    texto = TIPOS_CORTOS.get(tipo, tipo)
-    return texto if len(texto) <= 22 else texto[:21].rstrip(" ,.") + "…"
-
 def _normalizar(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty: return df
     df = df.copy()
     df["EstadoFuncionamiento"] = df["EstadoFuncionamiento"].fillna("").str.lower()
     df = df[df["EstadoFuncionamiento"].str.contains("vigente")]
+    
     df["urgencia"] = df["TieneServicioUrgencia"].fillna("").str.strip().str.upper().eq("SI")
     df["lat"] = pd.to_numeric(df["Latitud"], errors="coerce")
     df["lon"] = pd.to_numeric(df["Longitud"], errors="coerce")
     df = df.dropna(subset=["lat", "lon"])
     df = df[df["lat"].between(-56.9, -17.0) & df["lon"].between(-76.9, -66.0)]
+    
     partes = df["TipoViaGlosa"].fillna("").str.strip() + " " + df["NombreVia"].fillna("").str.strip() + " " + df["Numero"].fillna("").astype(str).str.strip()
     df["direccion"] = partes.str.replace(r"\s+", " ", regex=True).str.strip()
     df["fono"] = df["TelefonoMovil_TelefonoFijo"].fillna("").astype(str).str.replace(r"[^0-9]", "", regex=True)
+    
     df["comuna"] = df["ComunaGlosa"].fillna("").str.strip()
     df["nombre"] = df["EstablecimientoGlosa"].fillna("").str.strip()
+    
     return df[df["nombre"].ne("")].reset_index(drop=True)
 
 def ahora_en_chile() -> dt.datetime:
@@ -262,6 +218,9 @@ def tiempo_auto(km: float) -> str:
 # --------------------------------------------------------------------------
 # INTERFAZ PRINCIPAL
 # --------------------------------------------------------------------------
+if error_contador:
+    st.error(f"🚨 Error de conexión con el contador: {error_contador}")
+
 st.markdown(f'<div class="contador">Eres el usuario número {num_visitas_str} del sistema</div>', unsafe_allow_html=True)
 
 st.markdown(
@@ -316,6 +275,8 @@ if origen is None and not st.session_state["gps_activado"]:
 if origen is not None:
     lat0, lon0, _ = origen
     ahora = ahora_en_chile()
+    
+    # CORRECCIÓN CRÍTICA: Calcular la columna "abierto" antes de usarla
     df["abierto"] = [esta_abierto(u, ahora) for u in df["urgencia"]]
     
     incluir_todos = st.toggle("🟢 Incluir centros sin urgencia (CESFAM, etc.)", value=False)
